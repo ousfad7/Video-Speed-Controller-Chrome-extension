@@ -1,6 +1,6 @@
 // REFACTORED: Privacy-First Version. No external connections.
 // Video Speed Controller - Content Script with Shadow DOM
-// Compact preset button overlay - operates entirely offline.
+// Collapsible preset button overlay - operates entirely offline.
 
 (function () {
   'use strict';
@@ -40,6 +40,7 @@
       const rate = parseFloat(message);
       setPlaybackRate(rate);
       updateActiveButton(rate);
+      updateToggleLabel(rate);
     }
   });
 
@@ -50,31 +51,86 @@
       all: initial;
       position: fixed;
       top: 50%;
-      left: 0;
+      right: 0;
       transform: translateY(-50%);
       z-index: 2147483647;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
 
-    .vsc-container {
-      background: rgba(20, 20, 20, 0.8);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      border-radius: 0 8px 8px 0;
-      padding: 6px 5px;
+    .vsc-wrapper {
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      transition: opacity 0.2s ease, background 0.2s ease;
+      align-items: flex-end;
     }
 
-    .vsc-container:hover {
-      background: rgba(20, 20, 20, 0.95);
+    .vsc-toggle {
+      background: rgba(20, 20, 20, 0.9);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-radius: 8px 0 0 8px;
+      padding: 8px 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: none;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+
+    .vsc-toggle:hover {
+      background: rgba(30, 30, 30, 0.95);
+    }
+
+    .vsc-toggle-icon {
+      width: 16px;
+      height: 16px;
+      fill: #29aae1;
+    }
+
+    .vsc-toggle-label {
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      min-width: 28px;
+      text-align: center;
+    }
+
+    .vsc-toggle-arrow {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 10px;
+      transition: transform 0.3s ease;
+    }
+
+    .vsc-toggle.expanded .vsc-toggle-arrow {
+      transform: rotate(180deg);
+    }
+
+    .vsc-container {
+      background: rgba(20, 20, 20, 0.9);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-radius: 8px 0 0 8px;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-top: 4px;
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transition: max-height 0.3s ease, opacity 0.2s ease, padding 0.3s ease;
+    }
+
+    .vsc-container.expanded {
+      max-height: 300px;
+      opacity: 1;
+      padding: 6px 5px;
     }
 
     .vsc-btn {
-      width: 32px;
-      height: 26px;
+      width: 42px;
+      height: 28px;
       border: none;
       border-radius: 4px;
       background: rgba(255, 255, 255, 0.08);
@@ -84,6 +140,7 @@
       cursor: pointer;
       transition: all 0.15s ease;
       padding: 0;
+      margin: 2px 0;
     }
 
     .vsc-btn:hover {
@@ -102,6 +159,8 @@
     }
   `;
 
+  let isExpanded = false;
+
   function createOverlay() {
     if (window.location.protocol === 'chrome-extension:') return;
 
@@ -117,7 +176,32 @@
     styleSheet.textContent = styles;
     shadow.appendChild(styleSheet);
 
-    // Create container
+    // Create wrapper
+    const wrapper = document.createElement('div');
+    wrapper.className = 'vsc-wrapper';
+
+    // Create toggle button
+    const toggle = document.createElement('button');
+    toggle.className = 'vsc-toggle';
+    toggle.innerHTML = `
+      <svg class="vsc-toggle-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M13 2.05v2.02c3.95.49 7 3.85 7 7.93 0 3.21-1.92 6-4.72 7.28L13 17v5h5l-1.22-1.22C19.91 19.07 22 15.76 22 12c0-5.18-3.95-9.45-9-9.95zM11 2.05C5.94 2.55 2 6.81 2 12c0 3.76 2.09 7.07 5.22 8.78L6 22h5v-5l-2.28 2.28C5.92 18 4 15.21 4 12c0-4.08 3.05-7.44 7-7.93V2.05z"/>
+      </svg>
+      <span class="vsc-toggle-label">1x</span>
+      <span class="vsc-toggle-arrow">▼</span>
+    `;
+
+    toggle.addEventListener('click', () => {
+      isExpanded = !isExpanded;
+      toggle.classList.toggle('expanded', isExpanded);
+      container.classList.toggle('expanded', isExpanded);
+      // Persist expanded state
+      chrome.storage.local.set({ vscExpanded: isExpanded });
+    });
+
+    wrapper.appendChild(toggle);
+
+    // Create container for speed buttons
     const container = document.createElement('div');
     container.className = 'vsc-container';
 
@@ -133,19 +217,23 @@
       container.appendChild(btn);
     });
 
-    shadow.appendChild(container);
+    wrapper.appendChild(container);
+    shadow.appendChild(wrapper);
     document.body.appendChild(host);
 
     // Store references
     window.vscShadow = shadow;
+    window.vscToggle = toggle;
+    window.vscContainer = container;
 
-    // Load initial state
+    // Load initial state (speed + expanded)
     loadState();
   }
 
   function setSpeed(rate) {
     setPlaybackRate(rate);
     updateActiveButton(rate);
+    updateToggleLabel(rate);
     chrome.storage.sync.set({ key: rate.toString() });
   }
 
@@ -159,11 +247,34 @@
     });
   }
 
+  function updateToggleLabel(rate) {
+    if (!window.vscToggle) return;
+    const label = window.vscToggle.querySelector('.vsc-toggle-label');
+    if (label) {
+      label.textContent = rate + 'x';
+    }
+  }
+
   function loadState() {
+    // Load speed setting
     chrome.storage.sync.get(['key'], (result) => {
       const rate = result.key ? parseFloat(result.key) : 1;
       updateActiveButton(rate);
+      updateToggleLabel(rate);
       setPlaybackRate(rate);
+    });
+
+    // Load expanded state
+    chrome.storage.local.get(['vscExpanded'], (result) => {
+      if (result.vscExpanded === true) {
+        isExpanded = true;
+        if (window.vscToggle) {
+          window.vscToggle.classList.add('expanded');
+        }
+        if (window.vscContainer) {
+          window.vscContainer.classList.add('expanded');
+        }
+      }
     });
   }
 
@@ -172,6 +283,7 @@
     if (areaName === 'sync' && changes.key) {
       const rate = parseFloat(changes.key.newValue);
       updateActiveButton(rate);
+      updateToggleLabel(rate);
       setPlaybackRate(rate);
     }
   });

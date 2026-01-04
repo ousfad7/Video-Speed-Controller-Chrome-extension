@@ -6,17 +6,17 @@ document.querySelector("title").textContent = chrome.i18n.getMessage("extName");
 resetBtn.innerHTML = chrome.i18n.getMessage("reset");
 
 window.onload = function () {
-  
+
   chrome.storage.sync.get(["key"], function (result) {
     sliderValue.value = result.key;
     setValue();
-    
+
     const params = {
       active: true,
       currentWindow: true,
     };
-    
-    
+
+
     chrome.tabs.query(params, (tabs) => {
       chrome.tabs.sendMessage(tabs[0].id, result.key);
     });
@@ -27,10 +27,10 @@ resetBtn.addEventListener("click", function () {
   const params = {
     active: true,
     currentWindow: true,
-  }; 
-  
+  };
+
   sliderValue.value = "1";
-  setValue(); 
+  setValue();
 
   chrome.storage.sync.set(
     {
@@ -45,7 +45,7 @@ resetBtn.addEventListener("click", function () {
 
 
 sliderValue.addEventListener("change", () => {
-  const params = {    
+  const params = {
     active: true,
     currentWindow: true,
   };
@@ -67,73 +67,73 @@ sliderValue.addEventListener("change", () => {
 
 
 
-  
-
-  document.getElementById("minus").addEventListener("click", decreaseSpeed);
-  document.getElementById("plus").addEventListener("click", increaseSpeed);
-  
-  
-  function decreaseSpeed(){
-    sliderValue.value = sliderValue.value-0.25; 
-    setValue(); 
-
-    const params = {    
-      active: true,
-      currentWindow: true,
-    };
-    chrome.storage.sync.set(
-      {
-        key: sliderValue.value,
-
-      },
-      function () {}
-    );
-  
-
-    chrome.storage.sync.get(["key"], function (result) {
-      
-    });
-
-  
-    chrome.tabs.query(params, (tabs) => {
-      chrome.tabs.sendMessage(tabs[0].id, sliderValue.value);
-    });
-    
-
-  }
-  function increaseSpeed(){
-    sliderValue.value = Number(sliderValue.value)+0.25;
-    setValue();
 
 
-    const params = {    
-      active: true,
-      currentWindow: true,
-    };
-    chrome.storage.sync.set(
-      {
-        key: sliderValue.value,
+document.getElementById("minus").addEventListener("click", decreaseSpeed);
+document.getElementById("plus").addEventListener("click", increaseSpeed);
 
-      },
-      function () {}
-    );
-  
-    chrome.storage.sync.get(["key"], function (result) {
-      
-    });
-  
-    chrome.tabs.query(params, (tabs) => {
-      chrome.tabs.sendMessage(tabs[0].id, sliderValue.value);
-    });
 
-  }
+function decreaseSpeed() {
+  sliderValue.value = sliderValue.value - 0.25;
+  setValue();
+
+  const params = {
+    active: true,
+    currentWindow: true,
+  };
+  chrome.storage.sync.set(
+    {
+      key: sliderValue.value,
+
+    },
+    function () { }
+  );
+
+
+  chrome.storage.sync.get(["key"], function (result) {
+
+  });
+
+
+  chrome.tabs.query(params, (tabs) => {
+    chrome.tabs.sendMessage(tabs[0].id, sliderValue.value);
+  });
+
+
+}
+function increaseSpeed() {
+  sliderValue.value = Number(sliderValue.value) + 0.25;
+  setValue();
+
+
+  const params = {
+    active: true,
+    currentWindow: true,
+  };
+  chrome.storage.sync.set(
+    {
+      key: sliderValue.value,
+
+    },
+    function () { }
+  );
+
+  chrome.storage.sync.get(["key"], function (result) {
+
+  });
+
+  chrome.tabs.query(params, (tabs) => {
+    chrome.tabs.sendMessage(tabs[0].id, sliderValue.value);
+  });
+
+}
 
 chrome.commands.onCommand.addListener(function (command) {
- 
+
 
   switch (command) {
     case "left":
-      sliderValue.value= sliderValue.value - 0.25;
+      sliderValue.value = sliderValue.value - 0.25;
       setValue();
 
       chrome.storage.sync.set(
@@ -143,19 +143,19 @@ chrome.commands.onCommand.addListener(function (command) {
         },
         function () { }
       );
-    
 
-      chrome.tabs.query({    
+
+      chrome.tabs.query({
         active: true,
         currentWindow: true,
       }, (tabs) => {
         chrome.tabs.sendMessage(tabs[0].id, sliderValue.value);
       });
-      
+
       break;
 
     case "right":
-      sliderValue.value = Number(sliderValue.value)+0.25;
+      sliderValue.value = Number(sliderValue.value) + 0.25;
 
       setValue();
 
@@ -165,19 +165,19 @@ chrome.commands.onCommand.addListener(function (command) {
           key: document.getElementById("myRange").value,
 
         },
-        function () {}
+        function () { }
       );
-    
+
       chrome.storage.sync.get(["key"], function (result) {
       });
-    
-      chrome.tabs.query({    
+
+      chrome.tabs.query({
         active: true,
         currentWindow: true,
       }, (tabs) => {
         chrome.tabs.sendMessage(tabs[0].id, document.getElementById("myRange").value);
       });
-      
+
       break;
   }
 });
@@ -186,20 +186,20 @@ chrome.commands.onCommand.addListener(function (command) {
 // ***********************************
 
 
-  const rangeV = document.getElementById('rangeV'),
+const rangeV = document.getElementById('rangeV'),
 
-  setValue = ()=>{
+  setValue = () => {
     const
-      newValue = Number( (sliderValue.value - sliderValue.min) * 100 / (sliderValue.max - sliderValue.min) ),
+      newValue = Number((sliderValue.value - sliderValue.min) * 100 / (sliderValue.max - sliderValue.min)),
       newPosition = 10 - (newValue * 0.2);
 
-    rangeV.innerHTML = `<span>${sliderValue.value +"x"}</span>`;
+    rangeV.innerHTML = `<span>${sliderValue.value + "x"}</span>`;
     rangeV.style.left = `calc(${newValue}% + (${newPosition}px))`;
-    
-    var ran=rangeV.style.left;
+
+    var ran = rangeV.style.left;
 
 
-    
+
 
   };
 

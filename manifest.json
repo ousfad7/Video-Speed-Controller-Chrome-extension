@@ -1,10 +1,13 @@
 {
   "name": "__MSG_extName__",
-  "version": "3.2.8",
+  "version": "3.2.9",
   "description": "__MSG_desName__",
   "permissions": [
     "storage"
   ],
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'"
+  },
   "content_scripts": [
     {
       "all_frames": true,

@@ -1,7 +1,6 @@
 {
-  "update_url": "https://clients2.google.com/service/update2/crx",
   "name": "__MSG_extName__",
-  "version": "3.2.7",
+  "version": "3.2.8",
   "description": "__MSG_desName__",
   "permissions": [
     "storage"
@@ -24,9 +23,6 @@
     "service_worker": "background.js"
   },
   "action": {},
-  "host_permissions": [
-    "*://*/*"
-  ],
   "icons": {
     "16": "ICON 16.png",
     "32": "ICON 32.png",

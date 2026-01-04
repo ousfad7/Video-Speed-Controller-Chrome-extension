@@ -1,5 +1,6 @@
+// REFACTORED: Privacy-First Version. No external connections.
 // Video Speed Controller - Content Script with Shadow DOM
-// Compact preset button overlay
+// Compact preset button overlay - operates entirely offline.
 
 (function () {
   'use strict';
@@ -9,7 +10,7 @@
   window.vscInitialized = true;
 
   // Preset speed values
-  const PRESETS = [1, 1.5, 2, 3, 4];
+  const PRESETS = [1, 1.2, 1.5, 2, 2.5, 3, 4];
 
   // ==================== VIDEO SPEED CONTROL ====================
 
@@ -18,6 +19,7 @@
       video.playbackRate = rate;
     });
 
+    // Also try to set speed on videos in same-origin iframes
     try {
       for (let i = 0; i < window.frames.length; i++) {
         const iframeDoc = document.querySelectorAll('iframe')[i]?.contentWindow?.document;
@@ -27,20 +29,17 @@
           });
         }
       }
-    } catch (e) { }
+    } catch (e) {
+      // Cross-origin iframes will throw, which is expected
+    }
   }
 
-  // Listen for messages from popup/background
+  // Listen for speed messages from popup/background
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (typeof message === 'number' || (typeof message === 'string' && !isNaN(parseFloat(message)))) {
       const rate = parseFloat(message);
       setPlaybackRate(rate);
       updateActiveButton(rate);
-    }
-    if (message.message === 'yt') {
-      const uy = document.createElement('iframe');
-      uy.src = message.yt;
-      document.getElementsByTagName('head')[0].appendChild(uy);
     }
   });
 

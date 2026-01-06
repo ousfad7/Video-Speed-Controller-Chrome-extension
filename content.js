@@ -14,7 +14,7 @@ console.log("Video Speed Controller: Extension Loaded");
   const PRESETS = [1, 1.2, 1.5, 2, 2.5, 3, 4];
 
   // Volume preset values
-  const VOLUME_PRESETS = [20, 50, 100];
+  const VOLUME_PRESETS = [20, 50, 80, 100];
 
   // Default volume
   let currentVolume = 100;

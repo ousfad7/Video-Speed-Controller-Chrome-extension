@@ -1,6 +1,7 @@
 // REFACTORED: Privacy-First Version. No external connections.
 // Video Speed Controller - Content Script with Shadow DOM
 // Collapsible preset button overlay - operates entirely offline.
+console.log("Video Speed Controller: Extension Loaded");
 
 (function () {
   'use strict';
@@ -11,6 +12,12 @@
 
   // Preset speed values
   const PRESETS = [1, 1.2, 1.5, 2, 2.5, 3, 4];
+
+  // Volume preset values
+  const VOLUME_PRESETS = [20, 50, 100];
+
+  // Default volume
+  let currentVolume = 100;
 
   // ==================== VIDEO SPEED CONTROL ====================
 
@@ -26,12 +33,40 @@
         if (iframeDoc) {
           iframeDoc.querySelectorAll('video').forEach((video) => {
             video.playbackRate = rate;
+            video.volume = currentVolume / 100;
           });
         }
       }
     } catch (e) {
       // Cross-origin iframes will throw, which is expected
     }
+  }
+
+  function setVolume(level) {
+    currentVolume = level;
+    const normalizedVolume = level / 100;
+
+    document.querySelectorAll('video').forEach((video) => {
+      video.volume = normalizedVolume;
+    });
+
+    // Same-origin iframes
+    try {
+      for (let i = 0; i < window.frames.length; i++) {
+        const iframeDoc = document.querySelectorAll('iframe')[i]?.contentWindow?.document;
+        if (iframeDoc) {
+          iframeDoc.querySelectorAll('video').forEach((video) => {
+            video.volume = normalizedVolume;
+          });
+        }
+      }
+    } catch (e) { }
+
+    // Persist
+    chrome.storage.local.set({ vscVolume: level });
+
+    // Update active volume button
+    updateActiveVolumeButton(level);
   }
 
   // Listen for speed messages from popup/background
@@ -123,7 +158,7 @@
     }
 
     .vsc-container.expanded {
-      max-height: 300px;
+      max-height: 500px;
       opacity: 1;
       padding: 6px 5px;
     }
@@ -156,6 +191,52 @@
 
     .vsc-btn.active:hover {
       background: #3bb8ef;
+    }
+
+    .vsc-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+      margin: 6px 0;
+      width: 100%;
+    }
+
+    .vsc-section-label {
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 9px;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .vsc-vol-btn {
+      width: 42px;
+      height: 28px;
+      border: none;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 10px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      padding: 0;
+      margin: 2px 0;
+    }
+
+    .vsc-vol-btn:hover {
+      background: rgba(255, 255, 255, 0.18);
+      color: #fff;
+    }
+
+    .vsc-vol-btn.active {
+      background: #e67e22;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .vsc-vol-btn.active:hover {
+      background: #f39c12;
     }
   `;
 
@@ -195,7 +276,6 @@
       isExpanded = !isExpanded;
       toggle.classList.toggle('expanded', isExpanded);
       container.classList.toggle('expanded', isExpanded);
-      // Persist expanded state
       chrome.storage.local.set({ vscExpanded: isExpanded });
     });
 
@@ -205,7 +285,7 @@
     const container = document.createElement('div');
     container.className = 'vsc-container';
 
-    // Create preset buttons
+    // Create preset speed buttons
     PRESETS.forEach(speed => {
       const btn = document.createElement('button');
       btn.className = 'vsc-btn';
@@ -213,6 +293,23 @@
       btn.textContent = speed + 'x';
       btn.addEventListener('click', () => {
         setSpeed(speed);
+      });
+      container.appendChild(btn);
+    });
+
+    // Divider
+    const divider = document.createElement('div');
+    divider.className = 'vsc-divider';
+    container.appendChild(divider);
+
+    // Volume preset buttons
+    VOLUME_PRESETS.forEach(vol => {
+      const btn = document.createElement('button');
+      btn.className = 'vsc-vol-btn';
+      btn.dataset.volume = vol;
+      btn.textContent = vol + '%';
+      btn.addEventListener('click', () => {
+        setVolume(vol);
       });
       container.appendChild(btn);
     });
@@ -226,7 +323,7 @@
     window.vscToggle = toggle;
     window.vscContainer = container;
 
-    // Load initial state (speed + expanded)
+    // Load initial state
     loadState();
   }
 
@@ -244,6 +341,16 @@
     buttons.forEach(btn => {
       const speed = parseFloat(btn.dataset.speed);
       btn.classList.toggle('active', speed === rate);
+    });
+  }
+
+  function updateActiveVolumeButton(level) {
+    if (!window.vscShadow) return;
+
+    const buttons = window.vscShadow.querySelectorAll('.vsc-vol-btn');
+    buttons.forEach(btn => {
+      const vol = parseInt(btn.dataset.volume, 10);
+      btn.classList.toggle('active', vol === level);
     });
   }
 
@@ -274,6 +381,15 @@
         if (window.vscContainer) {
           window.vscContainer.classList.add('expanded');
         }
+      }
+    });
+
+    // Load volume state
+    chrome.storage.local.get(['vscVolume'], (result) => {
+      if (result.vscVolume !== undefined) {
+        setVolume(result.vscVolume);
+      } else {
+        setVolume(100);
       }
     });
   }

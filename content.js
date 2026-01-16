@@ -1,78 +1,81 @@
 // REFACTORED: Privacy-First Version. No external connections.
 // Video Speed Controller - Content Script with Shadow DOM
-// Collapsible preset button overlay - operates entirely offline.
+// Zoom-independent sizing using devicePixelRatio compensation.
 console.log("Video Speed Controller: Extension Loaded");
 
 (function () {
   'use strict';
 
-  // Prevent multiple injections
   if (window.vscInitialized) return;
   window.vscInitialized = true;
 
-  // Preset speed values
-  const PRESETS = [1, 1.2, 1.5, 2, 2.5, 3, 4];
-
-  // Volume preset values
+  const PRESETS = [1, 1.2, 1.5, 2, 2.5, 3, 4, 16];
   const VOLUME_PRESETS = [20, 50, 80, 100];
 
-  // Default volume
   let currentVolume = 100;
+  let isExpanded = false;
 
-  // ==================== VIDEO SPEED CONTROL ====================
+  // ==================== ZOOM COMPENSATION ====================
+
+  function applyZoomCompensation() {
+    if (!window.vscHost) return;
+    const scale = 1 / (window.devicePixelRatio || 1);
+    window.vscHost.style.transform = `translateY(-50%) scale(${scale})`;
+  }
+
+  // RAF loop for continuous monitoring
+  let lastRatio = window.devicePixelRatio || 1;
+  function monitorZoom() {
+    const currentRatio = window.devicePixelRatio || 1;
+    if (currentRatio !== lastRatio) {
+      lastRatio = currentRatio;
+      applyZoomCompensation();
+    }
+    requestAnimationFrame(monitorZoom);
+  }
+
+  // Resize listener for zoom changes
+  window.addEventListener('resize', applyZoomCompensation);
+
+  // MutationObserver for DOM changes
+  function setupMutationObserver() {
+    const observer = new MutationObserver(applyZoomCompensation);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['style', 'class'],
+      subtree: false
+    });
+  }
+
+  // ==================== VIDEO CONTROL ====================
 
   function setPlaybackRate(rate) {
-    document.querySelectorAll('video').forEach((video) => {
-      video.playbackRate = rate;
-    });
-
-    // Also try to set speed on videos in same-origin iframes
+    document.querySelectorAll('video').forEach((v) => { v.playbackRate = rate; });
     try {
       for (let i = 0; i < window.frames.length; i++) {
-        const iframeDoc = document.querySelectorAll('iframe')[i]?.contentWindow?.document;
-        if (iframeDoc) {
-          iframeDoc.querySelectorAll('video').forEach((video) => {
-            video.playbackRate = rate;
-            video.volume = currentVolume / 100;
-          });
-        }
+        const doc = document.querySelectorAll('iframe')[i]?.contentWindow?.document;
+        if (doc) doc.querySelectorAll('video').forEach((v) => { v.playbackRate = rate; v.volume = currentVolume / 100; });
       }
-    } catch (e) {
-      // Cross-origin iframes will throw, which is expected
-    }
+    } catch (e) { }
   }
 
   function setVolume(level) {
     currentVolume = level;
-    const normalizedVolume = level / 100;
-
-    document.querySelectorAll('video').forEach((video) => {
-      video.volume = normalizedVolume;
-    });
-
-    // Same-origin iframes
+    const vol = level / 100;
+    document.querySelectorAll('video').forEach((v) => { v.volume = vol; });
     try {
       for (let i = 0; i < window.frames.length; i++) {
-        const iframeDoc = document.querySelectorAll('iframe')[i]?.contentWindow?.document;
-        if (iframeDoc) {
-          iframeDoc.querySelectorAll('video').forEach((video) => {
-            video.volume = normalizedVolume;
-          });
-        }
+        const doc = document.querySelectorAll('iframe')[i]?.contentWindow?.document;
+        if (doc) doc.querySelectorAll('video').forEach((v) => { v.volume = vol; });
       }
     } catch (e) { }
-
-    // Persist
     chrome.storage.local.set({ vscVolume: level });
-
-    // Update active volume button
     updateActiveVolumeButton(level);
   }
 
-  // Listen for speed messages from popup/background
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (typeof message === 'number' || (typeof message === 'string' && !isNaN(parseFloat(message)))) {
-      const rate = parseFloat(message);
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (typeof msg === 'number' || (typeof msg === 'string' && !isNaN(parseFloat(msg)))) {
+      const rate = parseFloat(msg);
       setPlaybackRate(rate);
       updateActiveButton(rate);
       updateToggleLabel(rate);
@@ -81,187 +84,257 @@ console.log("Video Speed Controller: Extension Loaded");
 
   // ==================== SHADOW DOM OVERLAY ====================
 
+  // CSS with 10% reduced dimensions and !important on ALL properties
   const styles = `
+    *, *::before, *::after {
+      box-sizing: border-box !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      transform: none !important;
+      animation: none !important;
+    }
+
     :host {
-      all: initial;
-      position: fixed;
-      top: 50%;
-      right: 0;
-      transform: translateY(-50%);
-      z-index: 2147483647;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      all: initial !important;
+      display: block !important;
+      position: fixed !important;
+      top: 50% !important;
+      right: 0px !important;
+      left: auto !important;
+      bottom: auto !important;
+      width: auto !important;
+      height: auto !important;
+      max-width: none !important;
+      max-height: none !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      background: transparent !important;
+      transform-origin: top right !important;
+      z-index: 2147483647 !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+      font-size: 14px !important;
+      font-weight: 400 !important;
+      line-height: 1.4 !important;
+      color: #fff !important;
+      pointer-events: auto !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      isolation: isolate !important;
+      contain: layout style !important;
     }
 
     .vsc-wrapper {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: flex-end !important;
+      width: auto !important;
+      height: auto !important;
+      position: relative !important;
     }
 
     .vsc-toggle {
-      background: rgba(20, 20, 20, 0.9);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      border-radius: 8px 0 0 8px;
-      padding: 8px 10px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      border: none;
-      transition: all 0.2s ease;
-      user-select: none;
+      display: flex !important;
+      align-items: center !important;
+      gap: 5.4px !important;
+      width: auto !important;
+      height: auto !important;
+      padding: 7.2px 9px !important;
+      margin: 0 !important;
+      border: none !important;
+      border-radius: 7.2px 0 0 7.2px !important;
+      background: rgba(20, 20, 20, 0.9) !important;
+      backdrop-filter: blur(8px) !important;
+      -webkit-backdrop-filter: blur(8px) !important;
+      cursor: pointer !important;
+      user-select: none !important;
+      outline: none !important;
+      transition: background 0.2s ease !important;
     }
 
     .vsc-toggle:hover {
-      background: rgba(30, 30, 30, 0.95);
+      background: rgba(30, 30, 30, 0.95) !important;
     }
 
     .vsc-toggle-icon {
-      width: 16px;
-      height: 16px;
-      fill: #29aae1;
+      width: 14.4px !important;
+      height: 14.4px !important;
+      min-width: 14.4px !important;
+      min-height: 14.4px !important;
+      max-width: 14.4px !important;
+      max-height: 14.4px !important;
+      fill: #29aae1 !important;
     }
 
     .vsc-toggle-label {
-      color: #fff;
-      font-size: 12px;
-      font-weight: 600;
-      min-width: 28px;
-      text-align: center;
+      font-size: 10.8px !important;
+      font-weight: 600 !important;
+      color: #fff !important;
+      min-width: 25.2px !important;
+      text-align: center !important;
+      line-height: 1 !important;
     }
 
     .vsc-toggle-arrow {
-      color: rgba(255, 255, 255, 0.5);
-      font-size: 10px;
-      transition: transform 0.3s ease;
+      font-size: 9px !important;
+      color: rgba(255, 255, 255, 0.5) !important;
+      transition: transform 0.3s ease !important;
     }
 
     .vsc-toggle.expanded .vsc-toggle-arrow {
-      transform: rotate(180deg);
+      transform: rotate(180deg) !important;
     }
 
     .vsc-container {
-      background: rgba(20, 20, 20, 0.9);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      border-radius: 8px 0 0 8px;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-      margin-top: 4px;
-      overflow: hidden;
-      max-height: 0;
-      opacity: 0;
-      transition: max-height 0.3s ease, opacity 0.2s ease, padding 0.3s ease;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 0 !important;
+      width: auto !important;
+      margin-top: 3.6px !important;
+      padding: 0 !important;
+      border-radius: 7.2px 0 0 7.2px !important;
+      background: rgba(20, 20, 20, 0.9) !important;
+      backdrop-filter: blur(8px) !important;
+      -webkit-backdrop-filter: blur(8px) !important;
+      overflow: hidden !important;
+      max-height: 0px !important;
+      opacity: 0 !important;
+      transition: max-height 0.3s ease, opacity 0.2s ease, padding 0.3s ease !important;
     }
 
     .vsc-container.expanded {
-      max-height: 500px;
-      opacity: 1;
-      padding: 6px 5px;
+      max-height: 600px !important;
+      opacity: 1 !important;
+      padding: 5.4px 4.5px !important;
     }
 
     .vsc-btn {
-      width: 42px;
-      height: 28px;
-      border: none;
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.08);
-      color: rgba(255, 255, 255, 0.7);
-      font-size: 11px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      padding: 0;
-      margin: 2px 0;
+      width: 37.8px !important;
+      height: 25.2px !important;
+      min-width: 37.8px !important;
+      min-height: 25.2px !important;
+      max-width: 37.8px !important;
+      max-height: 25.2px !important;
+      padding: 0 !important;
+      margin: 1.8px 0 !important;
+      border: none !important;
+      border-radius: 3.6px !important;
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: rgba(255, 255, 255, 0.7) !important;
+      font-size: 10px !important;
+      font-weight: 500 !important;
+      line-height: 25.2px !important;
+      text-align: center !important;
+      cursor: pointer !important;
+      outline: none !important;
+      transition: background 0.15s ease, color 0.15s ease !important;
     }
 
     .vsc-btn:hover {
-      background: rgba(255, 255, 255, 0.18);
-      color: #fff;
+      background: rgba(255, 255, 255, 0.18) !important;
+      color: #fff !important;
     }
 
     .vsc-btn.active {
-      background: #29aae1;
-      color: #fff;
-      font-weight: 600;
+      background: #29aae1 !important;
+      color: #fff !important;
+      font-weight: 600 !important;
     }
 
     .vsc-btn.active:hover {
-      background: #3bb8ef;
+      background: #3bb8ef !important;
     }
 
     .vsc-divider {
-      height: 1px;
-      background: rgba(255, 255, 255, 0.1);
-      margin: 6px 0;
-      width: 100%;
-    }
-
-    .vsc-section-label {
-      color: rgba(255, 255, 255, 0.4);
-      font-size: 9px;
-      text-align: center;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 4px;
+      width: 100% !important;
+      height: 1px !important;
+      min-height: 1px !important;
+      max-height: 1px !important;
+      margin: 5.4px 0 !important;
+      padding: 0 !important;
+      background: rgba(255, 255, 255, 0.1) !important;
+      border: none !important;
     }
 
     .vsc-vol-btn {
-      width: 42px;
-      height: 28px;
-      border: none;
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.08);
-      color: rgba(255, 255, 255, 0.7);
-      font-size: 10px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      padding: 0;
-      margin: 2px 0;
+      width: 37.8px !important;
+      height: 25.2px !important;
+      min-width: 37.8px !important;
+      min-height: 25.2px !important;
+      max-width: 37.8px !important;
+      max-height: 25.2px !important;
+      padding: 0 !important;
+      margin: 1.8px 0 !important;
+      border: none !important;
+      border-radius: 3.6px !important;
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: rgba(255, 255, 255, 0.7) !important;
+      font-size: 9px !important;
+      font-weight: 500 !important;
+      line-height: 25.2px !important;
+      text-align: center !important;
+      cursor: pointer !important;
+      outline: none !important;
+      transition: background 0.15s ease, color 0.15s ease !important;
     }
 
     .vsc-vol-btn:hover {
-      background: rgba(255, 255, 255, 0.18);
-      color: #fff;
+      background: rgba(255, 255, 255, 0.18) !important;
+      color: #fff !important;
     }
 
     .vsc-vol-btn.active {
-      background: #e67e22;
-      color: #fff;
-      font-weight: 600;
+      background: #e67e22 !important;
+      color: #fff !important;
+      font-weight: 600 !important;
     }
 
     .vsc-vol-btn.active:hover {
-      background: #f39c12;
+      background: #f39c12 !important;
     }
   `;
-
-  let isExpanded = false;
 
   function createOverlay() {
     if (window.location.protocol === 'chrome-extension:') return;
 
-    // Create host element
     const host = document.createElement('div');
     host.id = 'vsc-overlay-host';
+    host.setAttribute('style', `
+      position: fixed !important;
+      top: 50% !important;
+      right: 0px !important;
+      left: auto !important;
+      bottom: auto !important;
+      width: auto !important;
+      height: auto !important;
+      max-width: none !important;
+      max-height: none !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      background: transparent !important;
+      transform-origin: top right !important;
+      z-index: 2147483647 !important;
+      pointer-events: auto !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      display: block !important;
+      isolation: isolate !important;
+    `);
 
-    // Attach shadow DOM
     const shadow = host.attachShadow({ mode: 'closed' });
 
-    // Add styles
     const styleSheet = document.createElement('style');
     styleSheet.textContent = styles;
     shadow.appendChild(styleSheet);
 
-    // Create wrapper
     const wrapper = document.createElement('div');
     wrapper.className = 'vsc-wrapper';
 
-    // Create toggle button
     const toggle = document.createElement('button');
     toggle.className = 'vsc-toggle';
     toggle.innerHTML = `
@@ -271,46 +344,36 @@ console.log("Video Speed Controller: Extension Loaded");
       <span class="vsc-toggle-label">1x</span>
       <span class="vsc-toggle-arrow">▼</span>
     `;
-
     toggle.addEventListener('click', () => {
       isExpanded = !isExpanded;
       toggle.classList.toggle('expanded', isExpanded);
       container.classList.toggle('expanded', isExpanded);
       chrome.storage.local.set({ vscExpanded: isExpanded });
     });
-
     wrapper.appendChild(toggle);
 
-    // Create container for speed buttons
     const container = document.createElement('div');
     container.className = 'vsc-container';
 
-    // Create preset speed buttons
     PRESETS.forEach(speed => {
       const btn = document.createElement('button');
       btn.className = 'vsc-btn';
       btn.dataset.speed = speed;
       btn.textContent = speed + 'x';
-      btn.addEventListener('click', () => {
-        setSpeed(speed);
-      });
+      btn.addEventListener('click', () => setSpeed(speed));
       container.appendChild(btn);
     });
 
-    // Divider
     const divider = document.createElement('div');
     divider.className = 'vsc-divider';
     container.appendChild(divider);
 
-    // Volume preset buttons
     VOLUME_PRESETS.forEach(vol => {
       const btn = document.createElement('button');
       btn.className = 'vsc-vol-btn';
       btn.dataset.volume = vol;
       btn.textContent = vol + '%';
-      btn.addEventListener('click', () => {
-        setVolume(vol);
-      });
+      btn.addEventListener('click', () => setVolume(vol));
       container.appendChild(btn);
     });
 
@@ -318,12 +381,14 @@ console.log("Video Speed Controller: Extension Loaded");
     shadow.appendChild(wrapper);
     document.body.appendChild(host);
 
-    // Store references
     window.vscShadow = shadow;
     window.vscToggle = toggle;
     window.vscContainer = container;
+    window.vscHost = host;
 
-    // Load initial state
+    applyZoomCompensation();
+    requestAnimationFrame(monitorZoom);
+    setupMutationObserver();
     loadState();
   }
 
@@ -336,75 +401,53 @@ console.log("Video Speed Controller: Extension Loaded");
 
   function updateActiveButton(rate) {
     if (!window.vscShadow) return;
-
-    const buttons = window.vscShadow.querySelectorAll('.vsc-btn');
-    buttons.forEach(btn => {
-      const speed = parseFloat(btn.dataset.speed);
-      btn.classList.toggle('active', speed === rate);
+    window.vscShadow.querySelectorAll('.vsc-btn').forEach(btn => {
+      btn.classList.toggle('active', parseFloat(btn.dataset.speed) === rate);
     });
   }
 
   function updateActiveVolumeButton(level) {
     if (!window.vscShadow) return;
-
-    const buttons = window.vscShadow.querySelectorAll('.vsc-vol-btn');
-    buttons.forEach(btn => {
-      const vol = parseInt(btn.dataset.volume, 10);
-      btn.classList.toggle('active', vol === level);
+    window.vscShadow.querySelectorAll('.vsc-vol-btn').forEach(btn => {
+      btn.classList.toggle('active', parseInt(btn.dataset.volume, 10) === level);
     });
   }
 
   function updateToggleLabel(rate) {
     if (!window.vscToggle) return;
     const label = window.vscToggle.querySelector('.vsc-toggle-label');
-    if (label) {
-      label.textContent = rate + 'x';
-    }
+    if (label) label.textContent = rate + 'x';
   }
 
   function loadState() {
-    // Load speed setting
-    chrome.storage.sync.get(['key'], (result) => {
-      const rate = result.key ? parseFloat(result.key) : 1;
+    chrome.storage.sync.get(['key'], (r) => {
+      const rate = r.key ? parseFloat(r.key) : 1;
       updateActiveButton(rate);
       updateToggleLabel(rate);
       setPlaybackRate(rate);
     });
 
-    // Load expanded state
-    chrome.storage.local.get(['vscExpanded'], (result) => {
-      if (result.vscExpanded === true) {
+    chrome.storage.local.get(['vscExpanded'], (r) => {
+      if (r.vscExpanded === true) {
         isExpanded = true;
-        if (window.vscToggle) {
-          window.vscToggle.classList.add('expanded');
-        }
-        if (window.vscContainer) {
-          window.vscContainer.classList.add('expanded');
-        }
+        if (window.vscToggle) window.vscToggle.classList.add('expanded');
+        if (window.vscContainer) window.vscContainer.classList.add('expanded');
       }
     });
 
-    // Load volume state
-    chrome.storage.local.get(['vscVolume'], (result) => {
-      if (result.vscVolume !== undefined) {
-        setVolume(result.vscVolume);
-      } else {
-        setVolume(100);
-      }
+    chrome.storage.local.get(['vscVolume'], (r) => {
+      setVolume(r.vscVolume !== undefined ? r.vscVolume : 100);
     });
   }
 
-  // Listen for storage changes
-  chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'sync' && changes.key) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'sync' && changes.key) {
       const rate = parseFloat(changes.key.newValue);
       updateActiveButton(rate);
       updateToggleLabel(rate);
       setPlaybackRate(rate);
     }
   });
-
-  // ==================== INITIALIZATION ====================
 
   if (document.body) {
     createOverlay();

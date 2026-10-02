@@ -10,17 +10,24 @@ console.log("Video Speed Controller: Extension Loaded");
   window.vscInitialized = true;
 
   const PRESETS = [1, 1.2, 1.5, 2, 2.5, 3, 4, 16];
-  const VOLUME_PRESETS = [20, 50, 80, 100];
 
-  let currentVolume = 100;
   let isExpanded = false;
+  let currentSpeed = 1;
+  let isSettingRate = false;
+
+  chrome.storage.sync.get(['key'], (r) => {
+    if (r.key) {
+      currentSpeed = parseFloat(r.key);
+      setPlaybackRate(currentSpeed);
+    }
+  });
 
   // ==================== ZOOM COMPENSATION ====================
 
   function applyZoomCompensation() {
     if (!window.vscHost) return;
     const scale = 1 / (window.devicePixelRatio || 1);
-    window.vscHost.style.transform = `translateY(-50%) scale(${scale})`;
+    window.vscHost.style.transform = `scale(${scale})`;
   }
 
   // RAF loop for continuous monitoring
@@ -50,28 +57,70 @@ console.log("Video Speed Controller: Extension Loaded");
   // ==================== VIDEO CONTROL ====================
 
   function setPlaybackRate(rate) {
+    currentSpeed = rate;
+    isSettingRate = true;
     document.querySelectorAll('video').forEach((v) => { v.playbackRate = rate; });
     try {
       for (let i = 0; i < window.frames.length; i++) {
         const doc = document.querySelectorAll('iframe')[i]?.contentWindow?.document;
-        if (doc) doc.querySelectorAll('video').forEach((v) => { v.playbackRate = rate; v.volume = currentVolume / 100; });
+        if (doc) doc.querySelectorAll('video').forEach((v) => { v.playbackRate = rate; });
       }
     } catch (e) { }
+    setTimeout(() => { isSettingRate = false; }, 50);
   }
 
-  function setVolume(level) {
-    currentVolume = level;
-    const vol = level / 100;
-    document.querySelectorAll('video').forEach((v) => { v.volume = vol; });
-    try {
-      for (let i = 0; i < window.frames.length; i++) {
-        const doc = document.querySelectorAll('iframe')[i]?.contentWindow?.document;
-        if (doc) doc.querySelectorAll('video').forEach((v) => { v.volume = vol; });
-      }
-    } catch (e) { }
-    chrome.storage.local.set({ vscVolume: level });
-    updateActiveVolumeButton(level);
+  function enforcePlaybackRate(video) {
+    if (!video || video.tagName !== 'VIDEO') return;
+    if (video.playbackRate !== currentSpeed) {
+      isSettingRate = true;
+      video.playbackRate = currentSpeed;
+      setTimeout(() => { isSettingRate = false; }, 50);
+    }
   }
+
+  // Enforce speed whenever video plays, loads metadata, or speed is changed externally
+  document.addEventListener('play', (e) => {
+    enforcePlaybackRate(e.target);
+  }, true);
+
+  document.addEventListener('loadedmetadata', (e) => {
+    enforcePlaybackRate(e.target);
+  }, true);
+
+  document.addEventListener('ratechange', (e) => {
+    if (!isSettingRate) {
+      enforcePlaybackRate(e.target);
+    }
+  }, true);
+
+  // Handle SPA navigation (e.g. YouTube)
+  window.addEventListener('yt-navigate-finish', () => {
+    setPlaybackRate(currentSpeed);
+  });
+
+  // Watch for dynamically inserted video elements
+  function setupVideoObserver() {
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === 1) {
+            if (node.tagName === 'VIDEO') {
+              enforcePlaybackRate(node);
+            } else if (node.querySelectorAll) {
+              node.querySelectorAll('video').forEach(enforcePlaybackRate);
+            }
+          }
+        }
+      }
+    });
+
+    observer.observe(document.documentElement || document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  setupVideoObserver();
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (typeof msg === 'number' || (typeof msg === 'string' && !isNaN(parseFloat(msg)))) {
@@ -98,7 +147,7 @@ console.log("Video Speed Controller: Extension Loaded");
       all: initial !important;
       display: block !important;
       position: fixed !important;
-      top: 50% !important;
+      top: 20px !important;
       right: 0px !important;
       left: auto !important;
       bottom: auto !important;
@@ -246,54 +295,6 @@ console.log("Video Speed Controller: Extension Loaded");
     .vsc-btn.active:hover {
       background: #3bb8ef !important;
     }
-
-    .vsc-divider {
-      width: 100% !important;
-      height: 1px !important;
-      min-height: 1px !important;
-      max-height: 1px !important;
-      margin: 5.4px 0 !important;
-      padding: 0 !important;
-      background: rgba(255, 255, 255, 0.1) !important;
-      border: none !important;
-    }
-
-    .vsc-vol-btn {
-      width: 37.8px !important;
-      height: 25.2px !important;
-      min-width: 37.8px !important;
-      min-height: 25.2px !important;
-      max-width: 37.8px !important;
-      max-height: 25.2px !important;
-      padding: 0 !important;
-      margin: 1.8px 0 !important;
-      border: none !important;
-      border-radius: 3.6px !important;
-      background: rgba(255, 255, 255, 0.08) !important;
-      color: rgba(255, 255, 255, 0.7) !important;
-      font-size: 9px !important;
-      font-weight: 500 !important;
-      line-height: 25.2px !important;
-      text-align: center !important;
-      cursor: pointer !important;
-      outline: none !important;
-      transition: background 0.15s ease, color 0.15s ease !important;
-    }
-
-    .vsc-vol-btn:hover {
-      background: rgba(255, 255, 255, 0.18) !important;
-      color: #fff !important;
-    }
-
-    .vsc-vol-btn.active {
-      background: #e67e22 !important;
-      color: #fff !important;
-      font-weight: 600 !important;
-    }
-
-    .vsc-vol-btn.active:hover {
-      background: #f39c12 !important;
-    }
   `;
 
   function createOverlay() {
@@ -303,7 +304,7 @@ console.log("Video Speed Controller: Extension Loaded");
     host.id = 'vsc-overlay-host';
     host.setAttribute('style', `
       position: fixed !important;
-      top: 50% !important;
+      top: 20px !important;
       right: 0px !important;
       left: auto !important;
       bottom: auto !important;
@@ -338,9 +339,6 @@ console.log("Video Speed Controller: Extension Loaded");
     const toggle = document.createElement('button');
     toggle.className = 'vsc-toggle';
     toggle.innerHTML = `
-      <svg class="vsc-toggle-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M13 2.05v2.02c3.95.49 7 3.85 7 7.93 0 3.21-1.92 6-4.72 7.28L13 17v5h5l-1.22-1.22C19.91 19.07 22 15.76 22 12c0-5.18-3.95-9.45-9-9.95zM11 2.05C5.94 2.55 2 6.81 2 12c0 3.76 2.09 7.07 5.22 8.78L6 22h5v-5l-2.28 2.28C5.92 18 4 15.21 4 12c0-4.08 3.05-7.44 7-7.93V2.05z"/>
-      </svg>
       <span class="vsc-toggle-label">1x</span>
       <span class="vsc-toggle-arrow">▼</span>
     `;
@@ -361,19 +359,6 @@ console.log("Video Speed Controller: Extension Loaded");
       btn.dataset.speed = speed;
       btn.textContent = speed + 'x';
       btn.addEventListener('click', () => setSpeed(speed));
-      container.appendChild(btn);
-    });
-
-    const divider = document.createElement('div');
-    divider.className = 'vsc-divider';
-    container.appendChild(divider);
-
-    VOLUME_PRESETS.forEach(vol => {
-      const btn = document.createElement('button');
-      btn.className = 'vsc-vol-btn';
-      btn.dataset.volume = vol;
-      btn.textContent = vol + '%';
-      btn.addEventListener('click', () => setVolume(vol));
       container.appendChild(btn);
     });
 
@@ -406,12 +391,6 @@ console.log("Video Speed Controller: Extension Loaded");
     });
   }
 
-  function updateActiveVolumeButton(level) {
-    if (!window.vscShadow) return;
-    window.vscShadow.querySelectorAll('.vsc-vol-btn').forEach(btn => {
-      btn.classList.toggle('active', parseInt(btn.dataset.volume, 10) === level);
-    });
-  }
 
   function updateToggleLabel(rate) {
     if (!window.vscToggle) return;
@@ -435,9 +414,6 @@ console.log("Video Speed Controller: Extension Loaded");
       }
     });
 
-    chrome.storage.local.get(['vscVolume'], (r) => {
-      setVolume(r.vscVolume !== undefined ? r.vscVolume : 100);
-    });
   }
 
   chrome.storage.onChanged.addListener((changes, area) => {

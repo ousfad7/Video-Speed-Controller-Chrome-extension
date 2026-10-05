@@ -9,11 +9,10 @@ console.log("Video Speed Controller: Extension Loaded");
   if (window.vscInitialized) return;
   window.vscInitialized = true;
 
-  const PRESETS = [1, 1.2, 1.5, 2, 2.5, 3, 4, 16];
+  const PRESETS = [1, 1.25, 1.5, 2, 2.5, 3, 4, 16];
 
   let isExpanded = false;
   let currentSpeed = 1;
-  let isSettingRate = false;
 
   chrome.storage.sync.get(['key'], (r) => {
     if (r.key) {
@@ -56,71 +55,114 @@ console.log("Video Speed Controller: Extension Loaded");
 
   // ==================== VIDEO CONTROL ====================
 
-  function setPlaybackRate(rate) {
-    currentSpeed = rate;
-    isSettingRate = true;
-    document.querySelectorAll('video').forEach((v) => { v.playbackRate = rate; });
+  function findVideos(root = document) {
+    const videos = [];
+    if (!root) return videos;
     try {
-      for (let i = 0; i < window.frames.length; i++) {
-        const doc = document.querySelectorAll('iframe')[i]?.contentWindow?.document;
-        if (doc) doc.querySelectorAll('video').forEach((v) => { v.playbackRate = rate; });
+      if (root.querySelectorAll) {
+        root.querySelectorAll('video').forEach((v) => videos.push(v));
+        root.querySelectorAll('*').forEach((el) => {
+          if (el.shadowRoot) {
+            videos.push(...findVideos(el.shadowRoot));
+          }
+        });
       }
     } catch (e) { }
-    setTimeout(() => { isSettingRate = false; }, 50);
+    return videos;
   }
 
   function enforcePlaybackRate(video) {
     if (!video || video.tagName !== 'VIDEO') return;
-    if (video.playbackRate !== currentSpeed) {
-      isSettingRate = true;
+    if (video.playbackRate !== currentSpeed || video.defaultPlaybackRate !== currentSpeed) {
+      video.defaultPlaybackRate = currentSpeed;
       video.playbackRate = currentSpeed;
-      setTimeout(() => { isSettingRate = false; }, 50);
     }
   }
 
-  // Enforce speed whenever video plays, loads metadata, or speed is changed externally
-  document.addEventListener('play', (e) => {
-    enforcePlaybackRate(e.target);
-  }, true);
+  function attachVideoListeners(video) {
+    if (!video || video.tagName !== 'VIDEO') return;
+    if (video._vscBound) return;
+    video._vscBound = true;
 
-  document.addEventListener('loadedmetadata', (e) => {
-    enforcePlaybackRate(e.target);
-  }, true);
+    const events = ['play', 'playing', 'ratechange', 'loadedmetadata', 'canplay', 'timeupdate', 'seeked'];
+    events.forEach((evt) => {
+      video.addEventListener(evt, () => enforcePlaybackRate(video), true);
+    });
 
-  document.addEventListener('ratechange', (e) => {
-    if (!isSettingRate) {
-      enforcePlaybackRate(e.target);
-    }
-  }, true);
+    enforcePlaybackRate(video);
+  }
 
-  // Handle SPA navigation (e.g. YouTube)
-  window.addEventListener('yt-navigate-finish', () => {
-    setPlaybackRate(currentSpeed);
+  function setPlaybackRate(rate) {
+    currentSpeed = rate;
+    const allVideos = findVideos(document);
+    allVideos.forEach((v) => {
+      attachVideoListeners(v);
+      enforcePlaybackRate(v);
+    });
+    try {
+      for (let i = 0; i < window.frames.length; i++) {
+        const doc = window.frames[i]?.document;
+        if (doc) {
+          findVideos(doc).forEach((v) => {
+            attachVideoListeners(v);
+            enforcePlaybackRate(v);
+          });
+        }
+      }
+    } catch (e) { }
+  }
+
+  // Document-level capturing listeners for all media events
+  const mediaEvents = ['play', 'playing', 'ratechange', 'loadedmetadata', 'canplay', 'timeupdate', 'seeked'];
+  mediaEvents.forEach((evt) => {
+    document.addEventListener(evt, (e) => {
+      if (e.target && e.target.tagName === 'VIDEO') {
+        attachVideoListeners(e.target);
+        enforcePlaybackRate(e.target);
+      }
+    }, true);
   });
 
-  // Watch for dynamically inserted video elements
+  // Handle SPA navigation across platforms (YouTube, Instagram, X, Facebook)
+  ['yt-navigate-finish', 'spfdone', 'popstate'].forEach((evt) => {
+    window.addEventListener(evt, () => setPlaybackRate(currentSpeed));
+  });
+
+  // Watch for dynamically inserted video elements across light DOM and shadow roots
   function setupVideoObserver() {
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType === 1) {
             if (node.tagName === 'VIDEO') {
-              enforcePlaybackRate(node);
+              attachVideoListeners(node);
             } else if (node.querySelectorAll) {
-              node.querySelectorAll('video').forEach(enforcePlaybackRate);
+              findVideos(node).forEach(attachVideoListeners);
             }
           }
         }
       }
     });
 
-    observer.observe(document.documentElement || document.body, {
+    const target = document.documentElement || document;
+    observer.observe(target, {
       childList: true,
       subtree: true
     });
   }
 
   setupVideoObserver();
+
+  // Periodic heartbeat fallback (every 1s) to catch stealth video recycling on infinite feeds
+  setInterval(() => {
+    const videos = findVideos(document);
+    for (const v of videos) {
+      if (!v._vscBound) attachVideoListeners(v);
+      if (!v.paused && (v.playbackRate !== currentSpeed || v.defaultPlaybackRate !== currentSpeed)) {
+        enforcePlaybackRate(v);
+      }
+    }
+  }, 1000);
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (typeof msg === 'number' || (typeof msg === 'string' && !isNaN(parseFloat(msg)))) {
@@ -147,7 +189,7 @@ console.log("Video Speed Controller: Extension Loaded");
       all: initial !important;
       display: block !important;
       position: fixed !important;
-      top: 20px !important;
+      top: 40px !important;
       right: 0px !important;
       left: auto !important;
       bottom: auto !important;
@@ -299,12 +341,13 @@ console.log("Video Speed Controller: Extension Loaded");
 
   function createOverlay() {
     if (window.location.protocol === 'chrome-extension:') return;
+    if (window.self !== window.top && (window.innerWidth < 400 || window.innerHeight < 300)) return;
 
     const host = document.createElement('div');
     host.id = 'vsc-overlay-host';
     host.setAttribute('style', `
       position: fixed !important;
-      top: 20px !important;
+      top: 40px !important;
       right: 0px !important;
       left: auto !important;
       bottom: auto !important;

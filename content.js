@@ -9,10 +9,12 @@ console.log("Video Speed Controller: Extension Loaded");
   if (window.vscInitialized) return;
   window.vscInitialized = true;
 
-  const PRESETS = [1, 1.25, 1.5, 2, 2.5, 3, 4, 16];
+  const PRESETS = [1, 1.25, 1.5, 2, 2.5, 3, 4];
 
-  let isExpanded = false;
   let currentSpeed = 1;
+  let currentPosition = 'right';
+  let showControls = true;
+  let isSettingsOpen = false;
 
   chrome.storage.sync.get(['key'], (r) => {
     if (r.key) {
@@ -169,7 +171,6 @@ console.log("Video Speed Controller: Extension Loaded");
       const rate = parseFloat(msg);
       setPlaybackRate(rate);
       updateActiveButton(rate);
-      updateToggleLabel(rate);
     }
   });
 
@@ -217,6 +218,12 @@ console.log("Video Speed Controller: Extension Loaded");
       contain: layout style !important;
     }
 
+    :host(.pos-left) {
+      right: auto !important;
+      left: 0px !important;
+      transform-origin: top left !important;
+    }
+
     .vsc-wrapper {
       display: flex !important;
       flex-direction: column !important;
@@ -224,58 +231,17 @@ console.log("Video Speed Controller: Extension Loaded");
       width: auto !important;
       height: auto !important;
       position: relative !important;
+      opacity: 0.1 !important;
+      transition: opacity 0.25s ease !important;
     }
 
-    .vsc-toggle {
-      display: flex !important;
-      align-items: center !important;
-      gap: 5.4px !important;
-      width: auto !important;
-      height: auto !important;
-      padding: 7.2px 9px !important;
-      margin: 0 !important;
-      border: none !important;
-      border-radius: 7.2px 0 0 7.2px !important;
-      background: rgba(20, 20, 20, 0.9) !important;
-      backdrop-filter: blur(8px) !important;
-      -webkit-backdrop-filter: blur(8px) !important;
-      cursor: pointer !important;
-      user-select: none !important;
-      outline: none !important;
-      transition: background 0.2s ease !important;
+    .vsc-wrapper:hover,
+    .vsc-wrapper.settings-open {
+      opacity: 1 !important;
     }
 
-    .vsc-toggle:hover {
-      background: rgba(30, 30, 30, 0.95) !important;
-    }
-
-    .vsc-toggle-icon {
-      width: 14.4px !important;
-      height: 14.4px !important;
-      min-width: 14.4px !important;
-      min-height: 14.4px !important;
-      max-width: 14.4px !important;
-      max-height: 14.4px !important;
-      fill: #29aae1 !important;
-    }
-
-    .vsc-toggle-label {
-      font-size: 10.8px !important;
-      font-weight: 600 !important;
-      color: #fff !important;
-      min-width: 25.2px !important;
-      text-align: center !important;
-      line-height: 1 !important;
-    }
-
-    .vsc-toggle-arrow {
-      font-size: 9px !important;
-      color: rgba(255, 255, 255, 0.5) !important;
-      transition: transform 0.3s ease !important;
-    }
-
-    .vsc-toggle.expanded .vsc-toggle-arrow {
-      transform: rotate(180deg) !important;
+    :host(.pos-left) .vsc-wrapper {
+      align-items: flex-start !important;
     }
 
     .vsc-container {
@@ -283,22 +249,25 @@ console.log("Video Speed Controller: Extension Loaded");
       flex-direction: column !important;
       gap: 0 !important;
       width: auto !important;
-      margin-top: 3.6px !important;
-      padding: 0 !important;
+      padding: 5.4px 4.5px !important;
       border-radius: 7.2px 0 0 7.2px !important;
       background: rgba(20, 20, 20, 0.9) !important;
       backdrop-filter: blur(8px) !important;
       -webkit-backdrop-filter: blur(8px) !important;
-      overflow: hidden !important;
-      max-height: 0px !important;
-      opacity: 0 !important;
-      transition: max-height 0.3s ease, opacity 0.2s ease, padding 0.3s ease !important;
     }
 
-    .vsc-container.expanded {
-      max-height: 600px !important;
-      opacity: 1 !important;
-      padding: 5.4px 4.5px !important;
+    :host(.pos-left) .vsc-container {
+      border-radius: 0 7.2px 7.2px 0 !important;
+    }
+
+    .vsc-speeds {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 0 !important;
+    }
+
+    .vsc-speeds.hidden {
+      display: none !important;
     }
 
     .vsc-btn {
@@ -321,6 +290,9 @@ console.log("Video Speed Controller: Extension Loaded");
       cursor: pointer !important;
       outline: none !important;
       transition: background 0.15s ease, color 0.15s ease !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
     }
 
     .vsc-btn:hover {
@@ -336,6 +308,154 @@ console.log("Video Speed Controller: Extension Loaded");
 
     .vsc-btn.active:hover {
       background: #3bb8ef !important;
+    }
+
+    .vsc-gear-icon {
+      width: 14px !important;
+      height: 14px !important;
+      fill: currentColor !important;
+      display: block !important;
+      pointer-events: none !important;
+    }
+
+    .vsc-settings-panel {
+      display: none !important;
+      position: absolute !important;
+      top: 0 !important;
+      right: calc(100% + 6px) !important;
+      width: 140px !important;
+      background: rgba(20, 20, 20, 0.95) !important;
+      backdrop-filter: blur(10px) !important;
+      -webkit-backdrop-filter: blur(10px) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      border-radius: 7.2px !important;
+      padding: 9px 10px !important;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+      z-index: 2147483647 !important;
+      user-select: none !important;
+    }
+
+    .vsc-settings-panel.open {
+      display: block !important;
+    }
+
+    :host(.pos-left) .vsc-settings-panel {
+      right: auto !important;
+      left: calc(100% + 6px) !important;
+    }
+
+    .vsc-panel-title {
+      font-size: 10px !important;
+      font-weight: 700 !important;
+      color: rgba(255, 255, 255, 0.6) !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.5px !important;
+      margin-bottom: 8px !important;
+      padding-bottom: 4px !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+
+    .vsc-setting-row {
+      margin-bottom: 8px !important;
+    }
+
+    .vsc-setting-label {
+      font-size: 10px !important;
+      font-weight: 500 !important;
+      color: rgba(255, 255, 255, 0.8) !important;
+      margin-bottom: 4px !important;
+      display: block !important;
+    }
+
+    .vsc-seg-group {
+      display: flex !important;
+      gap: 4px !important;
+      background: rgba(255, 255, 255, 0.06) !important;
+      padding: 2px !important;
+      border-radius: 5px !important;
+    }
+
+    .vsc-seg-btn {
+      flex: 1 !important;
+      height: 22px !important;
+      border: none !important;
+      border-radius: 4px !important;
+      background: transparent !important;
+      color: rgba(255, 255, 255, 0.7) !important;
+      font-size: 10px !important;
+      font-weight: 500 !important;
+      cursor: pointer !important;
+      transition: background 0.15s ease, color 0.15s ease !important;
+      outline: none !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+
+    .vsc-seg-btn:hover {
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: #fff !important;
+    }
+
+    .vsc-seg-btn.active {
+      background: #29aae1 !important;
+      color: #fff !important;
+      font-weight: 600 !important;
+    }
+
+    .vsc-toggle-row {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      margin-top: 8px !important;
+      padding-top: 6px !important;
+      border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+
+    .vsc-switch {
+      position: relative !important;
+      display: inline-block !important;
+      width: 28px !important;
+      height: 16px !important;
+      cursor: pointer !important;
+    }
+
+    .vsc-switch input {
+      opacity: 0 !important;
+      width: 0 !important;
+      height: 0 !important;
+      margin: 0 !important;
+    }
+
+    .vsc-slider {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      background-color: rgba(255, 255, 255, 0.2) !important;
+      transition: 0.2s !important;
+      border-radius: 16px !important;
+    }
+
+    .vsc-slider::before {
+      position: absolute !important;
+      content: "" !important;
+      height: 12px !important;
+      width: 12px !important;
+      left: 2px !important;
+      bottom: 2px !important;
+      background-color: #fff !important;
+      transition: 0.2s !important;
+      border-radius: 50% !important;
+    }
+
+    .vsc-switch input:checked + .vsc-slider {
+      background-color: #29aae1 !important;
+    }
+
+    .vsc-switch input:checked + .vsc-slider::before {
+      transform: translateX(12px) !important;
     }
   `;
 
@@ -379,22 +499,11 @@ console.log("Video Speed Controller: Extension Loaded");
     const wrapper = document.createElement('div');
     wrapper.className = 'vsc-wrapper';
 
-    const toggle = document.createElement('button');
-    toggle.className = 'vsc-toggle';
-    toggle.innerHTML = `
-      <span class="vsc-toggle-label">1x</span>
-      <span class="vsc-toggle-arrow">▼</span>
-    `;
-    toggle.addEventListener('click', () => {
-      isExpanded = !isExpanded;
-      toggle.classList.toggle('expanded', isExpanded);
-      container.classList.toggle('expanded', isExpanded);
-      chrome.storage.local.set({ vscExpanded: isExpanded });
-    });
-    wrapper.appendChild(toggle);
-
     const container = document.createElement('div');
     container.className = 'vsc-container';
+
+    const speedsContainer = document.createElement('div');
+    speedsContainer.className = 'vsc-speeds';
 
     PRESETS.forEach(speed => {
       const btn = document.createElement('button');
@@ -402,17 +511,95 @@ console.log("Video Speed Controller: Extension Loaded");
       btn.dataset.speed = speed;
       btn.textContent = speed + 'x';
       btn.addEventListener('click', () => setSpeed(speed));
-      container.appendChild(btn);
+      speedsContainer.appendChild(btn);
+    });
+
+    container.appendChild(speedsContainer);
+
+    const settingsBtn = document.createElement('button');
+    settingsBtn.className = 'vsc-btn vsc-settings-btn';
+    settingsBtn.title = 'Settings';
+    settingsBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" class="vsc-gear-icon">
+        <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+      </svg>
+    `;
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleSettings();
+    });
+    container.appendChild(settingsBtn);
+
+    const panel = document.createElement('div');
+    panel.className = 'vsc-settings-panel';
+    panel.innerHTML = `
+      <div class="vsc-panel-title">Settings</div>
+      <div class="vsc-setting-row">
+        <span class="vsc-setting-label">Position</span>
+        <div class="vsc-seg-group">
+          <button type="button" class="vsc-seg-btn vsc-seg-left">Left</button>
+          <button type="button" class="vsc-seg-btn vsc-seg-right active">Right</button>
+        </div>
+      </div>
+      <div class="vsc-toggle-row">
+        <span class="vsc-setting-label" style="margin-bottom:0 !important;">Controls</span>
+        <label class="vsc-switch">
+          <input type="checkbox" class="vsc-controls-toggle" checked>
+          <span class="vsc-slider"></span>
+        </label>
+      </div>
+    `;
+    panel.addEventListener('click', (e) => e.stopPropagation());
+
+    const btnLeft = panel.querySelector('.vsc-seg-left');
+    const btnRight = panel.querySelector('.vsc-seg-right');
+    const controlsToggle = panel.querySelector('.vsc-controls-toggle');
+
+    btnLeft.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setPosition('left');
+      chrome.storage.sync.set({ vscPosition: 'left' });
+    });
+
+    btnRight.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setPosition('right');
+      chrome.storage.sync.set({ vscPosition: 'right' });
+    });
+
+    controlsToggle.addEventListener('change', (e) => {
+      e.stopPropagation();
+      setShowControls(controlsToggle.checked);
+      chrome.storage.sync.set({ vscShowControls: controlsToggle.checked });
     });
 
     wrapper.appendChild(container);
+    wrapper.appendChild(panel);
     shadow.appendChild(wrapper);
     document.body.appendChild(host);
 
+    shadow.addEventListener('click', (e) => {
+      if (isSettingsOpen && !panel.contains(e.target) && !settingsBtn.contains(e.target)) {
+        toggleSettings(false);
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (isSettingsOpen && e.target !== host) {
+        toggleSettings(false);
+      }
+    }, true);
+
     window.vscShadow = shadow;
-    window.vscToggle = toggle;
-    window.vscContainer = container;
     window.vscHost = host;
+    window.vscWrapper = wrapper;
+    window.vscContainer = container;
+    window.vscSpeeds = speedsContainer;
+    window.vscSettingsBtn = settingsBtn;
+    window.vscSettingsPanel = panel;
+    window.vscSegLeft = btnLeft;
+    window.vscSegRight = btnRight;
+    window.vscControlsToggle = controlsToggle;
 
     applyZoomCompensation();
     requestAnimationFrame(monitorZoom);
@@ -420,51 +607,89 @@ console.log("Video Speed Controller: Extension Loaded");
     loadState();
   }
 
+  function setPosition(pos) {
+    currentPosition = pos === 'left' ? 'left' : 'right';
+    if (!window.vscHost) return;
+
+    if (currentPosition === 'left') {
+      window.vscHost.classList.add('pos-left');
+      window.vscHost.style.setProperty('left', '0px', 'important');
+      window.vscHost.style.setProperty('right', 'auto', 'important');
+      window.vscHost.style.setProperty('transform-origin', 'top left', 'important');
+    } else {
+      window.vscHost.classList.remove('pos-left');
+      window.vscHost.style.setProperty('right', '0px', 'important');
+      window.vscHost.style.setProperty('left', 'auto', 'important');
+      window.vscHost.style.setProperty('transform-origin', 'top right', 'important');
+    }
+
+    if (window.vscSegLeft && window.vscSegRight) {
+      window.vscSegLeft.classList.toggle('active', currentPosition === 'left');
+      window.vscSegRight.classList.toggle('active', currentPosition === 'right');
+    }
+  }
+
+  function setShowControls(show) {
+    showControls = Boolean(show);
+    if (window.vscSpeeds) {
+      window.vscSpeeds.classList.toggle('hidden', !showControls);
+    }
+    if (window.vscControlsToggle) {
+      window.vscControlsToggle.checked = showControls;
+    }
+  }
+
+  function toggleSettings(force) {
+    if (!window.vscSettingsPanel || !window.vscSettingsBtn) return;
+    isSettingsOpen = force !== undefined ? force : !isSettingsOpen;
+    window.vscSettingsPanel.classList.toggle('open', isSettingsOpen);
+    window.vscSettingsBtn.classList.toggle('active', isSettingsOpen);
+    if (window.vscWrapper) {
+      window.vscWrapper.classList.toggle('settings-open', isSettingsOpen);
+    }
+  }
+
   function setSpeed(rate) {
     setPlaybackRate(rate);
     updateActiveButton(rate);
-    updateToggleLabel(rate);
     chrome.storage.sync.set({ key: rate.toString() });
   }
 
   function updateActiveButton(rate) {
     if (!window.vscShadow) return;
-    window.vscShadow.querySelectorAll('.vsc-btn').forEach(btn => {
+    window.vscShadow.querySelectorAll('.vsc-speeds .vsc-btn').forEach(btn => {
       btn.classList.toggle('active', parseFloat(btn.dataset.speed) === rate);
     });
   }
 
-
-  function updateToggleLabel(rate) {
-    if (!window.vscToggle) return;
-    const label = window.vscToggle.querySelector('.vsc-toggle-label');
-    if (label) label.textContent = rate + 'x';
-  }
-
   function loadState() {
-    chrome.storage.sync.get(['key'], (r) => {
+    chrome.storage.sync.get(['key', 'vscPosition', 'vscShowControls'], (r) => {
       const rate = r.key ? parseFloat(r.key) : 1;
       updateActiveButton(rate);
-      updateToggleLabel(rate);
       setPlaybackRate(rate);
-    });
 
-    chrome.storage.local.get(['vscExpanded'], (r) => {
-      if (r.vscExpanded === true) {
-        isExpanded = true;
-        if (window.vscToggle) window.vscToggle.classList.add('expanded');
-        if (window.vscContainer) window.vscContainer.classList.add('expanded');
+      if (r.vscPosition) {
+        setPosition(r.vscPosition);
+      }
+      if (r.vscShowControls !== undefined) {
+        setShowControls(r.vscShowControls);
       }
     });
-
   }
 
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'sync' && changes.key) {
-      const rate = parseFloat(changes.key.newValue);
-      updateActiveButton(rate);
-      updateToggleLabel(rate);
-      setPlaybackRate(rate);
+    if (area === 'sync') {
+      if (changes.key) {
+        const rate = parseFloat(changes.key.newValue);
+        updateActiveButton(rate);
+        setPlaybackRate(rate);
+      }
+      if (changes.vscPosition) {
+        setPosition(changes.vscPosition.newValue);
+      }
+      if (changes.vscShowControls !== undefined) {
+        setShowControls(changes.vscShowControls.newValue);
+      }
     }
   });
 

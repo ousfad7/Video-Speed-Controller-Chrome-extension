@@ -1,9 +1,12 @@
 // REFACTORED: Privacy-First Version. No external connections.
 // This extension operates entirely offline and does not transmit any user data.
 
-// Initialize default speed on install
+// Initialize default speed, position, skip intro, and silence skipper on install
 chrome.runtime.onInstalled.addListener(function (details) {
-  chrome.storage.sync.set({ key: "1" });
+  chrome.storage.sync.set({ key: "1", vscPosition: "left", vscSkipEnabled: true, vscSkipSeconds: 20, vscSilenceEnabled: true, vscSilenceSpeed: 4 });
+  if (chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ key: "1", vscPosition: "left", vscSkipEnabled: true, vscSkipSeconds: 20, vscSilenceEnabled: true, vscSilenceSpeed: 4 });
+  }
 });
 
 // Keyboard shortcut handlers
